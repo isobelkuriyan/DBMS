@@ -1,0 +1,322 @@
+-- QUERIES
+USE tradeplatformm;
+-- QUERY 1 
+-- Check account balance for a customer.
+-- Plain English: "Show me the account number, currency, available balance 
+-- and blocked balance for customer ID."
+-- SELECT
+--     ba.account_number,
+--     c.name            AS currency_name,
+--     ab.currency_code,
+--     ab.available_balance,
+--     ab.blocked_balance,
+--     ab.txn_total_balance
+-- FROM bank_account ba
+-- JOIN account_balance ab ON ba.bank_account_id = ab.bank_account_id
+-- JOIN currency c         ON ab.currency_code = c.currency_code
+-- WHERE ba.customer_id = 1;
+
+
+-- Query 2 — Check portfolio holdings.
+-- Plain English: "Show me all stocks a customer currently holds,
+--  how many shares, at what average buy price, and what they are worth
+--  today."
+-- SELECT
+--     s.company_name,
+--     s.ticker,
+--     ph.quantity,
+--     ph.avg_buy_price,
+--     latest_sp.price      AS current_price,
+--     ROUND((latest_sp.price - ph.avg_buy_price) 
+--           * ph.quantity, 2) AS unrealised_pnl
+-- FROM investment_account ia
+-- JOIN portfolio_holding ph  ON ia.investment_account_id = ph.investment_account_id
+-- JOIN stock s               ON ph.stock_id = s.stock_id
+-- JOIN (
+--     SELECT stock_id, price, as_of_time
+--     FROM stock_price sp1
+--     WHERE as_of_time = (
+--         SELECT MAX(as_of_time)
+--         FROM stock_price sp2
+--         WHERE sp2.stock_id = sp1.stock_id
+--     )
+-- ) latest_sp                ON s.stock_id = latest_sp.stock_id
+-- WHERE ia.customer_id = 1;
+
+-- -- Query 3 — Check stock price at a given moment.
+-- --  Two scenarios:
+-- -- "What is the current price of AAPL(stock_id=1)?" — latest row in stock_price
+-- -- "What was the price of AAPL on a specific date?" — filter by as_of_time
+-- SELECT stock_id, price, as_of_time
+-- FROM stock_price
+-- WHERE stock_id = 1
+-- ORDER BY as_of_time DESC
+-- LIMIT 1;
+
+-- SELECT ss.company_name, s.price, s.as_of_time
+-- FROM stock_price s JOIN stock ss ON s.stock_id=ss.stock_id
+-- WHERE s.stock_id = 1
+-- AND DATE(s.as_of_time) = '2026-03-15'
+-- ORDER BY s.as_of_time DESC
+-- LIMIT 1;
+
+-- -- QUERY 4
+-- -- in this query I just want the customer to see all the items
+-- -- across all his/her own watchlists. I don't care about separate watchlists, 
+-- -- the customer just wants all information about his/her watchlists
+
+-- SELECT 
+--     wi.item_id,
+--     s.company_name,
+--     s.ticker,
+--     latest_sp.price AS current_price
+-- FROM watchlist_item wi
+-- JOIN stock s ON wi.stock_id = s.stock_id
+-- JOIN (
+--     SELECT stock_id, price
+--     FROM stock_price sp1
+--     WHERE as_of_time = (
+--         SELECT MAX(as_of_time)
+--         FROM stock_price sp2
+--         WHERE sp2.stock_id = sp1.stock_id
+--     )
+-- ) latest_sp ON s.stock_id = latest_sp.stock_id
+-- WHERE wi.watchlist_id IN (
+--     SELECT watchlist_id 
+--     FROM watchlist 
+--     WHERE customer_id = 1
+-- );
+
+-- -- Query5 Show all available stocks(i.e. active stocks)( is_active check) 
+-- SELECT 
+--     s.stock_id,
+--     s.company_name,
+--     s.ticker,
+--     latest_sp.price AS current_price
+-- FROM stock s
+-- JOIN (
+--     SELECT stock_id, price
+--     FROM stock_price sp1
+--     WHERE as_of_time = (
+--         SELECT MAX(as_of_time)
+--         FROM stock_price sp2
+--         WHERE sp2.stock_id = sp1.stock_id
+--     )
+-- ) latest_sp ON s.stock_id = latest_sp.stock_id
+-- WHERE s.is_active = 1;
+
+-- Q6: Find bank account by national ID (Aadhar)
+-- Only works for verified documents
+-- SELECT 
+--     c.customer_id,
+--     c.name,
+--     c.email,
+--     ci.doc_type,
+--     ci.doc_number,
+--     ba.account_number,
+--     ba.account_type
+-- FROM customer_identity ci
+-- JOIN customer c      ON ci.customer_id = c.customer_id
+-- JOIN bank_account ba ON c.customer_id = ba.customer_id
+-- WHERE ci.doc_number = '2345-6789-0123'
+-- AND ci.verified = 1;
+-- Alice's Aadhar number from the seed data we inserted
+
+-- Q7: Check risk profile before allowing a trade
+-- SELECT 
+--     c.name,
+--     rp.profile_name,
+--     rp.max_order_value,
+--     dlu.trades_count,
+--     dlu.trades_value,
+--     dlu.gross_traded_value
+-- FROM customer c
+-- JOIN risk_profile rp       ON c.customer_id = rp.customer_id
+-- LEFT JOIN daily_limit_usage dlu ON c.customer_id = dlu.customer_id
+--     AND dlu.usage_date = CURDATE()
+-- WHERE c.customer_id = 1;
+-- the max_order_value in the risk profile is the 
+-- maximum allowed value at which the customer can place a trade
+
+-- Q8: Check settlement status for a customer's trades
+-- SELECT 
+--     t.trade_id,
+--     s.company_name         AS stock_name,
+--     t.side,
+--     t.quantity,
+--     t.price,
+--     t.gross_value,
+--     se.status              AS settlement_status,
+--     se.scheduled_date,
+--     se.settled_at,
+--     se.payment_method
+-- FROM trade t
+-- JOIN orders o      ON t.order_id = o.order_id
+-- JOIN stock s       ON t.stock_id = s.stock_id
+-- JOIN settlement se ON t.trade_id = se.trade_id
+-- JOIN investment_account ia ON o.investment_account_id = ia.investment_account_id
+-- WHERE ia.customer_id = 1
+-- ORDER BY t.trade_time DESC;
+
+-- Q9: Check FX conversion fee for a card before transacting
+-- SELECT 
+--     c.card_id,
+--     c.card_type,
+--     cu.name                AS currency_name,
+--     fx.direction,
+--     fx.fx_markup_percent,
+--     fx.fx_max_time
+-- FROM card c
+-- JOIN fx_policy fx   ON c.card_id = fx.card_id
+-- JOIN currency cu    ON c.currency_code = cu.currency_code
+-- WHERE c.customer_id = 1;
+
+-- Q10: Check which currency a stock trades in
+-- SELECT 
+--     s.stock_id,
+--     s.company_name,
+--     s.ticker,
+--     cu.name      AS currency_name,
+--     sp.price,
+--     sp.as_of_time
+-- FROM stock s
+-- JOIN (
+--     SELECT stock_id, price, currency_code, as_of_time
+--     FROM stock_price sp1
+--     WHERE as_of_time = (
+--         SELECT MAX(as_of_time)
+--         FROM stock_price sp2
+--         WHERE sp2.stock_id = sp1.stock_id
+--     )
+-- ) sp ON s.stock_id = sp.stock_id
+-- JOIN currency cu ON sp.currency_code = cu.currency_code
+-- WHERE s.stock_id = 1;
+
+-- Q11: Find which branch a customer's bank account belongs to
+-- SELECT 
+--     c.name             AS customer_name,
+--     ba.account_number,
+--     ba.account_type,
+--     br.fbs             AS branch_code,
+--     br.city            AS branch_city
+-- FROM customer c
+-- JOIN bank_account ba ON c.customer_id = ba.customer_id
+-- JOIN branch br       ON ba.branch_id = br.branch_id
+-- WHERE c.customer_id = 1;
+
+-- Q12: Check currencies a customer holds money in
+-- SELECT 
+--     ba.account_number,
+--     cu.name            AS currency_name
+-- FROM bank_account ba
+-- JOIN account_balance ab ON ba.bank_account_id = ab.bank_account_id
+-- JOIN currency cu        ON ab.currency_code = cu.currency_code and ba.bank_account_id=ab.bank_account_id
+-- WHERE ba.customer_id = 2;
+
+-- Q13: Check fee rule for an investment account (brokerage rates)
+-- SELECT 
+--     ia.investment_account_id,
+--     ia.broker_number,
+--     fr.fee_type,
+--     fr.rate,
+--     fr.min_fee,
+--     fr.max_fee,
+--     fr.effective_from,
+--     fr.effective_to
+-- FROM investment_account ia
+-- JOIN fee_rule fr ON ia.investment_account_id = fr.investment_account_id
+-- WHERE ia.customer_id = 1
+-- AND fr.is_active = 1;
+
+-- Q14: Check trade charges on a specific trade
+-- SELECT 
+--     t.trade_id,
+--     s.company_name,
+--     t.side,
+--     t.quantity,
+--     t.price,
+--     t.gross_value,
+--     tc.free_type       AS charge_type,
+--     tc.amount          AS charge_amount,
+--     ROUND(t.gross_value + tc.amount, 2) AS total_cost
+-- FROM trade t
+-- JOIN stock s         ON t.stock_id = s.stock_id
+-- JOIN trade_charge tc ON t.trade_id = tc.trade_id
+-- JOIN orders o        ON t.order_id = o.order_id
+-- JOIN investment_account ia ON o.investment_account_id = ia.investment_account_id
+-- WHERE ia.customer_id = 1
+-- ORDER BY t.trade_time DESC;
+
+
+-- Q15: Check current and past orders with status
+-- SELECT 
+--     o.order_id,
+--     o.order_ref_id,
+--     s.company_name,
+--     s.ticker,
+--     o.order_type,
+--     o.side,
+--     o.quantity,
+--     o.limit_price,
+--     o.status,
+--     o.created_at,
+--     o.cancelled_at
+-- FROM orders o
+-- JOIN stock s ON o.stock_id = s.stock_id
+-- JOIN investment_account ia ON o.investment_account_id = ia.investment_account_id
+-- WHERE ia.customer_id = 1
+-- ORDER BY o.created_at DESC;
+
+-- Q16: Check daily limit usage for a customer
+-- SELECT 
+--     c.name,
+--     dlu.usage_date,
+--     dlu.trades_count,
+--     dlu.trades_value,
+--     dlu.gross_traded_value,
+--     dlu.risk_level,
+--     rp.max_order_value     AS max_allowed_order_value
+-- FROM customer c
+-- JOIN daily_limit_usage dlu ON c.customer_id = dlu.customer_id
+-- JOIN risk_profile rp       ON c.customer_id = rp.customer_id
+-- WHERE c.customer_id = 1
+-- ORDER BY dlu.usage_date DESC;
+
+-- Q17: Admin view — how much any customer trades in a day
+-- SELECT 
+--     c.customer_id,
+--     c.name,
+--     dlu.usage_date,
+--     dlu.trades_count,
+--     dlu.trades_value,
+--     dlu.gross_traded_value,
+--     dlu.risk_level
+-- FROM customer c
+-- JOIN daily_limit_usage dlu ON c.customer_id = dlu.customer_id
+-- WHERE dlu.usage_date = CURDATE()
+-- ORDER BY dlu.gross_traded_value DESC;
+
+-- Q18: Admin view — what role does an admin have
+-- SELECT 
+--     a.admin_id,
+--     a.email,
+--     a.status,
+--     ar.role_name
+-- FROM admin a
+-- JOIN admin_role ar ON a.role_id = ar.role_id
+-- WHERE a.admin_id = 1;
+
+-- Q19: Admin view — which admins oversee which customers
+-- SELECT 
+--     a.admin_id,
+--     a.email,
+--     ar.role_name,
+--     arm.entity_type,
+--     arm.entity_id
+-- FROM admin a
+-- JOIN admin_role ar    ON a.role_id = ar.role_id
+-- LEFT JOIN admin_role_map arm ON a.admin_id = arm.admin_id
+-- ORDER BY a.admin_id;
+
+
+-- more queries are present in task_5 as well
